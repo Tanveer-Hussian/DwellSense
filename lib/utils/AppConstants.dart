@@ -3,8 +3,6 @@
 // Keeping them here avoids magic strings/numbers scattered across the codebase.
 // ─────────────────────────────────────────────────────────────────────────────
  
-import 'package:flutter/material.dart';
- 
 class AppConstants {
   // ── Prevent instantiation ──────────────────────────────────────────────────
   AppConstants._();
@@ -36,6 +34,7 @@ class AppConstants {
   static const String bookingConfirmed = 'confirmed';
   static const String bookingRejected = 'rejected';
   static const String bookingCancelled = 'cancelled';
+  static const String bookingExpired = 'expired';
  
   // ── Complaint Status Values ────────────────────────────────────────────────
   static const String complaintPending = 'pending';

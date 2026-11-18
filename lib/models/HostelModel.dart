@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fyp/models/RoomModel.dart';
 
 // lib/models/HostelModel.dart
 // ─────────────────────────────────────────────────────────────────────────────
@@ -27,12 +28,17 @@ class HostelModel {
   final int totalReviews;
   final int totalRooms;
   final int availableRooms;
+  final List<RoomModel> rooms;  // Individual rooms & vacancies
   // ── Ranking counters (updated atomically when bookings/complaints change) ──
   final int totalBookings;        // FR-9.1: booking confirmation rate denominator
   final int confirmedBookings;    // FR-9.1: booking confirmation rate numerator
   final int totalComplaints;      // FR-9.1: complaint resolution rate denominator
   final int resolvedComplaints;   // FR-9.1: complaint resolution rate numerator
   final int totalResolutionTimeHours; // FR-9: for complaint resolution speed
+  final String? registrationNumber; // Unique registration number assigned by admin e.g. "DS-Hostel-1"
+  final bool unregistrationRequested; // True if owner submitted closure/unregistration request
+  final String? unregistrationReason; // Reason provided by owner for unregistering/closing
+  final DateTime? unregistrationRequestedAt; // Timestamp when owner requested unregistration
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -42,6 +48,21 @@ class HostelModel {
   // New getters for ML Ranking features
   double get complaintResolutionRate => totalComplaints == 0 ? 1.0 : resolvedComplaints / totalComplaints;
   double get bookingConfirmationRate => totalBookings == 0 ? 0.0 : confirmedBookings / totalBookings;
+  double get complaintFrequency => totalBookings == 0
+      ? (totalComplaints > 0 ? 1.0 : 0.0)
+      : (totalComplaints / totalBookings).clamp(0.0, 1.0);
+  double get resolutionSpeedHours => resolvedComplaints == 0
+      ? (totalComplaints == 0 ? 24.0 : 72.0)
+      : (totalResolutionTimeHours / resolvedComplaints).toDouble();
+
+  // ── Room & Vacancy getters ─────────────────────────────────────────────────
+  int get totalVacancies => rooms.fold(0, (acc, r) => acc + r.vacancies);
+  int get totalCapacity => rooms.fold(0, (acc, r) => acc + r.capacity);
+  int get totalOccupiedBeds => rooms.fold(0, (acc, r) => acc + r.occupied);
+  int get totalFilledRooms => rooms.where((r) => r.isFilled).length;
+  int get totalRoomsWithVacancy => rooms.where((r) => r.hasVacancy).length;
+  List<RoomModel> get roomsWithVacancy => rooms.where((r) => r.hasVacancy).toList();
+  List<RoomModel> get filledRooms => rooms.where((r) => r.isFilled).toList();
 
   HostelModel({
     required this.id,
@@ -60,10 +81,15 @@ class HostelModel {
     required this.images,
     this.isAvailable = true,
     this.status = 'pending',
+    this.registrationNumber,
+    this.unregistrationRequested = false,
+    this.unregistrationReason,
+    this.unregistrationRequestedAt,
     this.averageRating = 0.0,
     this.totalReviews = 0,
     this.totalRooms = 1,
     this.availableRooms = 1,
+    this.rooms = const [],
     this.totalBookings = 0,
     this.confirmedBookings = 0,
     this.totalComplaints = 0,
@@ -99,8 +125,56 @@ class HostelModel {
     return defaultValue;
   }
 
+  // Generate fallback rooms when a document does not have rooms array yet
+  static List<RoomModel> generateDefaultRooms({
+    required int totalRooms,
+    required String roomType,
+    int? availableRooms,
+  }) {
+    final count = totalRooms > 0 ? totalRooms : 1;
+    final cap = RoomModel.defaultCapacityForType(roomType);
+
+    final List<RoomModel> generated = [];
+    for (int i = 0; i < count; i++) {
+      generated.add(
+        RoomModel(
+          id: 'room_${i + 1}',
+          roomNumber: 'Room ${i + 1}',
+          type: roomType,
+          capacity: cap,
+          vacancies: cap,
+          assignedStudents: const [],
+          assignedStudentNames: const [],
+        ),
+      );
+    }
+    return generated;
+  }
+
   // ── fromMap: used when reading from Firestore ──────────────────────────────
   factory HostelModel.fromMap(Map<String, dynamic> map, String id) {
+    final parsedTotalRooms = _parseInt(map['totalRooms'], 1);
+    final parsedAvailRooms = _parseInt(map['availableRooms'], 1);
+    final parsedRoomType = map['roomType']?.toString() ?? 'Single';
+
+    List<RoomModel> parsedRooms = [];
+    if (map['rooms'] != null && map['rooms'] is List && (map['rooms'] as List).isNotEmpty) {
+      parsedRooms = (map['rooms'] as List)
+          .asMap()
+          .entries
+          .map((entry) => RoomModel.fromMap(
+                Map<String, dynamic>.from(entry.value),
+                'room_${entry.key + 1}',
+              ))
+          .toList();
+    } else {
+      parsedRooms = generateDefaultRooms(
+        totalRooms: parsedTotalRooms,
+        roomType: parsedRoomType,
+        availableRooms: parsedAvailRooms,
+      );
+    }
+
     return HostelModel(
       id: id,
       ownerId: map['ownerId']?.toString() ?? '',
@@ -112,16 +186,23 @@ class HostelModel {
       latitude: _parseDouble(map['latitude']),
       longitude: _parseDouble(map['longitude']),
       rentPerMonth: _parseDouble(map['rentPerMonth']),
-      roomType: map['roomType']?.toString() ?? 'Single',
+      roomType: parsedRoomType,
       genderPreference: map['genderPreference']?.toString() ?? 'Co-ed',
       facilities: List<String>.from(map['facilities'] ?? []),
       images: List<String>.from(map['images'] ?? []),
       isAvailable: map['isAvailable'] == true,
       status: map['status']?.toString() ?? 'pending',
+      registrationNumber: map['registrationNumber']?.toString(),
+      unregistrationRequested: map['unregistrationRequested'] == true,
+      unregistrationReason: map['unregistrationReason']?.toString(),
+      unregistrationRequestedAt: map['unregistrationRequestedAt'] != null
+          ? _parseDateTime(map['unregistrationRequestedAt'])
+          : null,
       averageRating: _parseDouble(map['averageRating']),
       totalReviews: _parseInt(map['totalReviews']),
-      totalRooms: _parseInt(map['totalRooms'], 1),
-      availableRooms: _parseInt(map['availableRooms'], 1),
+      totalRooms: parsedTotalRooms,
+      availableRooms: parsedAvailRooms,
+      rooms: parsedRooms,
       totalBookings: _parseInt(map['totalBookings']),
       confirmedBookings: _parseInt(map['confirmedBookings']),
       totalComplaints: _parseInt(map['totalComplaints']),
@@ -150,10 +231,16 @@ class HostelModel {
       'images': images,
       'isAvailable': isAvailable,
       'status': status,
+      'registrationNumber': registrationNumber,
+      'unregistrationRequested': unregistrationRequested,
+      'unregistrationReason': unregistrationReason,
+      if (unregistrationRequestedAt != null)
+        'unregistrationRequestedAt': unregistrationRequestedAt,
       'averageRating': averageRating,
       'totalReviews': totalReviews,
       'totalRooms': totalRooms,
       'availableRooms': availableRooms,
+      'rooms': rooms.map((r) => r.toMap()).toList(),
       'totalBookings': totalBookings,
       'confirmedBookings': confirmedBookings,
       'totalComplaints': totalComplaints,
@@ -179,9 +266,15 @@ class HostelModel {
     List<String>? images,
     bool? isAvailable,
     String? status,
+    String? registrationNumber,
+    bool? unregistrationRequested,
+    String? unregistrationReason,
+    DateTime? unregistrationRequestedAt,
     double? averageRating,
     int? totalReviews,
+    int? totalRooms,
     int? availableRooms,
+    List<RoomModel>? rooms,
     int? totalBookings,
     int? confirmedBookings,
     int? totalComplaints,
@@ -205,10 +298,15 @@ class HostelModel {
       images: images ?? this.images,
       isAvailable: isAvailable ?? this.isAvailable,
       status: status ?? this.status,
+      registrationNumber: registrationNumber ?? this.registrationNumber,
+      unregistrationRequested: unregistrationRequested ?? this.unregistrationRequested,
+      unregistrationReason: unregistrationReason ?? this.unregistrationReason,
+      unregistrationRequestedAt: unregistrationRequestedAt ?? this.unregistrationRequestedAt,
       averageRating: averageRating ?? this.averageRating,
       totalReviews: totalReviews ?? this.totalReviews,
-      totalRooms: totalRooms,
+      totalRooms: totalRooms ?? this.totalRooms,
       availableRooms: availableRooms ?? this.availableRooms,
+      rooms: rooms ?? this.rooms,
       totalBookings: totalBookings ?? this.totalBookings,
       confirmedBookings: confirmedBookings ?? this.confirmedBookings,
       totalComplaints: totalComplaints ?? this.totalComplaints,
@@ -219,7 +317,3 @@ class HostelModel {
     );
   }
 }
-
-
-
-

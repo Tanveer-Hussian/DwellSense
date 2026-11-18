@@ -1,9 +1,9 @@
 pandas
 numpy
 scikit-learn
-tensorflow
+scipy
+joblib
 fastapi
 uvicorn
-
-firebase-admin
 xgboost
+firebase-admin

@@ -49,12 +49,13 @@ class AuthController extends GetxController {
     }
 
     if (firebaseUser == null) {
-      // Logged out → clear local state and go to login
+      // Logged out → clear local state and go to welcome screen
       currentUser.value = null;
-      // Only navigate if we're not already on login/register
-      if (Get.currentRoute != AppRoutes.login &&
+      // Only navigate if we're not already on welcome/login/register
+      if (Get.currentRoute != AppRoutes.welcome &&
+          Get.currentRoute != AppRoutes.login &&
           Get.currentRoute != AppRoutes.register) {
-        Get.offAllNamed(AppRoutes.login);
+        Get.offAllNamed(AppRoutes.welcome);
       }
       return;
     }
@@ -86,11 +87,16 @@ class AuthController extends GetxController {
 
     // ── All checks passed — set user and navigate ─────────────────────────────
     currentUser.value = user;
-    _navigateByRole(user.role);
+    _navigateByRole(user.role, isNewUser: false);
   }
 
   // ── Navigate to the correct home screen based on role ─────────────────────
-  void _navigateByRole(String role) {
+  void _navigateByRole(String role, {bool isNewUser = false}) async {
+    if (isNewUser && (role == AppConstants.roleStudent || role == AppConstants.roleOwner)) {
+      Get.offAllNamed(AppRoutes.onboarding);
+      return;
+    }
+
     switch (role) {
       case AppConstants.roleStudent:
         Get.offAllNamed(AppRoutes.studentHome);
@@ -102,18 +108,12 @@ class AuthController extends GetxController {
         Get.offAllNamed(AppRoutes.adminHome);
         break;
       default:
-        Get.offAllNamed(AppRoutes.login);
+        Get.offAllNamed(AppRoutes.welcome);
     }
   }
 
   // ────────────────────────────────────────────────────────────────────────────
   // FR-1.1 / FR-1.2: Register a new user
-  //
-  // FIXED FLOW:
-  //   1. AuthService.registerUser() sets isRegistering=true, creates Auth
-  //      account + writes Firestore doc, then sets isRegistering=false.
-  //   2. We then manually fetch the user and navigate — instead of relying
-  //      on the authStateChanges listener which fired too early.
   // ────────────────────────────────────────────────────────────────────────────
   Future<void> register({
     required String name,
@@ -128,8 +128,6 @@ class AuthController extends GetxController {
       isLoading.value = true;
       errorMessage.value = '';
 
-      // registerUser() handles the isRegistering flag internally.
-      // It returns the complete UserModel only after Firestore write succeeds.
       final user = await _authService.registerUser(
         name: name,
         email: email,
@@ -140,11 +138,10 @@ class AuthController extends GetxController {
         cnicImageUrl: cnicImageUrl,
       );
 
-      // Firestore doc is now written. Set local user state.
       currentUser.value = user;
 
-      // Manually navigate — don't wait for the listener (it was blocked)
-      _navigateByRole(user.role);
+      // New user registration — trigger onboarding for student/owner
+      _navigateByRole(user.role, isNewUser: true);
 
     } on FirebaseAuthException catch (e) {
       errorMessage.value = _getAuthErrorMessage(e.code);

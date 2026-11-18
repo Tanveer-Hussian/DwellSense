@@ -4,7 +4,7 @@ class AdminStatCard extends StatelessWidget {
   final String label;
   final String value;
   final IconData icon;
-  final Color bgColor;
+  final Color bgColor; // Kept for compatibility, but ignored in favor of white
   final Color accentColor;
 
   const AdminStatCard({
@@ -18,47 +18,64 @@ class AdminStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade200;
+    final valueColor = isDark ? Colors.white : const Color(0xFF111827);
+    final labelColor = isDark ? Colors.grey.shade400 : const Color(0xFF6B7280);
+
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor, width: 1.5),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
+          if (!isDark)
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: accentColor.withOpacity(0.3), width: 1.5),
-            ),
-            child: Icon(icon, color: accentColor, size: 20),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: isDark ? 0.15 : 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: accentColor, size: 22),
+              ),
+            ],
           ),
           const Spacer(),
           Text(
             value,
             style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: accentColor,
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              color: valueColor,
+              height: 1.1,
               letterSpacing: -0.5,
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
           Text(
-            label,
+            label.replaceAll('\n', ' '), // Clean single line or natural wrap
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: accentColor,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: labelColor,
               height: 1.2,
             ),
           ),

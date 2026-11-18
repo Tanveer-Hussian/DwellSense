@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:fyp/models/HostelModel.dart';
@@ -229,9 +230,21 @@ class _AdminUserDetailScreenState extends State<AdminUserDetailScreen> {
 
   // ── Build ──────────────────────────────────────────────────────────────────
   @override
+  @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (kIsWeb) {
+      return _buildWebLayout(context, isDark);
+    }
+    return _buildMobileLayout(context, isDark);
+  }
+
+  Widget _buildMobileLayout(BuildContext context, bool isDark) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: kIsWeb
+          ? (isDark ? const Color(0xFF0F171E) : const Color(0xFFF6F8FA))
+          : AppColors.background,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : CustomScrollView(
@@ -266,6 +279,725 @@ class _AdminUserDetailScreenState extends State<AdminUserDetailScreen> {
   }
 
   // ── Sliver App Bar with avatar ─────────────────────────────────────────────
+
+  // ==============================================================================
+  // -- Web Layout & Components ---------------------------------------------------
+  // ==============================================================================
+
+  Widget _buildWebLayout(BuildContext context, bool isDark) {
+    final cardBg = isDark ? const Color(0xFF14202E) : Colors.white;
+    final cardBorder = isDark ? const Color(0xFF223242) : const Color(0xFFE2E8F0);
+    final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0F171E) : const Color(0xFFF6F8FA),
+      appBar: AppBar(
+        backgroundColor: cardBg,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(color: cardBorder, height: 1),
+        ),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: textPrimary),
+          tooltip: 'Back to Users',
+          onPressed: () => Get.back(),
+        ),
+        title: Row(
+          children: [
+            InkWell(
+              onTap: () => Get.back(),
+              child: Text(
+                'Users',
+                style: TextStyle(color: textSecondary, fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+            ),
+            Text('  /  ', style: TextStyle(color: textSecondary, fontSize: 13)),
+            Expanded(
+              child: Text(
+                user.name,
+                style: TextStyle(color: textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          // Role Badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: _roleColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _roleColor.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(_roleIcon, size: 14, color: _roleColor),
+                const SizedBox(width: 5),
+                Text(
+                  user.role.capitalizeFirst ?? user.role,
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _roleColor),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Status Badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: (user.isActive ? AppColors.success : AppColors.error).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: (user.isActive ? AppColors.success : AppColors.error).withValues(alpha: 0.3),
+              ),
+            ),
+            child: Text(
+              user.isActive ? 'Active' : 'Suspended',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: user.isActive ? AppColors.success : AppColors.error,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          IconButton(
+            icon: Icon(Icons.edit_outlined, color: textSecondary, size: 20),
+            tooltip: 'Edit User',
+            onPressed: _showEditDialog,
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+            tooltip: 'Delete User',
+            onPressed: _confirmDelete,
+          ),
+          const SizedBox(width: 16),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1100),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isWide = constraints.maxWidth >= 840;
+                        if (isWide) {
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(flex: 5, child: _buildWebLeftCol(context, isDark)),
+                              const SizedBox(width: 24),
+                              Expanded(flex: 7, child: _buildWebRightCol(context, isDark)),
+                            ],
+                          );
+                        }
+                        return Column(
+                          children: [
+                            _buildWebLeftCol(context, isDark),
+                            const SizedBox(height: 20),
+                            _buildWebRightCol(context, isDark),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildWebLeftCol(BuildContext context, bool isDark) {
+    final cardBorder = isDark ? const Color(0xFF223242) : const Color(0xFFE2E8F0);
+    final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    const tealAccent = Color(0xFF2DD4BF);
+
+    return Column(
+      children: [
+        // Hero Profile Card
+        _webCard(
+          isDark: isDark,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              // Avatar
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _roleColor.withValues(alpha: 0.6), width: 3),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _roleColor.withValues(alpha: 0.2),
+                      blurRadius: 16,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: CircleAvatar(
+                  radius: 46,
+                  backgroundColor: _roleColor.withValues(alpha: 0.15),
+                  backgroundImage: user.profileImage != null && user.profileImage!.isNotEmpty
+                      ? NetworkImage(user.profileImage!)
+                      : null,
+                  child: user.profileImage == null || user.profileImage!.isEmpty
+                      ? Text(
+                          user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
+                          style: TextStyle(
+                            fontSize: 34,
+                            fontWeight: FontWeight.bold,
+                            color: _roleColor,
+                          ),
+                        )
+                      : null,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                user.name,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: textPrimary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                user.email,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _roleColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _roleColor.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(
+                      user.role.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: _roleColor,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (user.isActive ? AppColors.success : AppColors.error).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: (user.isActive ? AppColors.success : AppColors.error).withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Text(
+                      user.isActive ? 'ACTIVE' : 'SUSPENDED',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: user.isActive ? AppColors.success : AppColors.error,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Divider(color: cardBorder, height: 1),
+              const SizedBox(height: 16),
+
+              // Status Switch row
+              Row(
+                children: [
+                  Icon(
+                    user.isActive ? Icons.check_circle_outline : Icons.block_outlined,
+                    color: user.isActive ? AppColors.success : AppColors.error,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Account Status', style: TextStyle(fontSize: 12, color: textSecondary)),
+                        Text(
+                          user.isActive ? 'Active & Authorized' : 'Suspended Account',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: user.isActive ? AppColors.success : AppColors.error,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (user.role != 'admin')
+                    Switch(
+                      value: user.isActive,
+                      activeColor: AppColors.success,
+                      onChanged: (_) => _toggleStatus(),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Action Buttons Card
+        _webCard(
+          isDark: isDark,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              OutlinedButton.icon(
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: const Text('Edit Profile'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: tealAccent,
+                  side: BorderSide(color: tealAccent.withValues(alpha: 0.5)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: _showEditDialog,
+              ),
+              const SizedBox(height: 10),
+              if (user.role != 'admin') ...[
+                OutlinedButton.icon(
+                  icon: Icon(
+                    user.isActive ? Icons.block_outlined : Icons.check_circle_outline,
+                    size: 16,
+                  ),
+                  label: Text(user.isActive ? 'Suspend User' : 'Activate User'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: user.isActive ? AppColors.warning : AppColors.success,
+                    side: BorderSide(
+                      color: user.isActive ? AppColors.warning : AppColors.success,
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: _toggleStatus,
+                ),
+                const SizedBox(height: 10),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.delete_outline, size: 16, color: Colors.white),
+                  label: const Text('Delete Account', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.error,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: _confirmDelete,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWebRightCol(BuildContext context, bool isDark) {
+    final cardBorder = isDark ? const Color(0xFF223242) : const Color(0xFFE2E8F0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Personal Information Card
+        _webCard(
+          isDark: isDark,
+          title: 'Personal Information',
+          icon: Icons.person_outline,
+          child: Column(
+            children: [
+              _webInfoRow(icon: Icons.email_outlined, label: 'Email Address', value: user.email, isDark: isDark),
+              Divider(color: cardBorder, height: 1),
+              _webInfoRow(
+                icon: Icons.phone_outlined,
+                label: 'Phone Number',
+                value: user.phone.isNotEmpty ? user.phone : 'Not provided',
+                isDark: isDark,
+              ),
+              if (user.role == 'student') ...[
+                Divider(color: cardBorder, height: 1),
+                _webInfoRow(
+                  icon: Icons.school_outlined,
+                  label: 'University / Institute',
+                  value: user.university?.isNotEmpty == true ? user.university! : 'Not specified',
+                  isDark: isDark,
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Account Details Card
+        _webCard(
+          isDark: isDark,
+          title: 'Account Metadata',
+          icon: Icons.manage_accounts_outlined,
+          child: Column(
+            children: [
+              _webInfoRow(
+                icon: Icons.badge_outlined,
+                label: 'User Unique ID',
+                value: user.uid,
+                isDark: isDark,
+                isMonospace: true,
+              ),
+              Divider(color: cardBorder, height: 1),
+              _webInfoRow(
+                icon: Icons.shield_outlined,
+                label: 'Account Role',
+                value: user.role.capitalizeFirst ?? user.role,
+                isDark: isDark,
+              ),
+              Divider(color: cardBorder, height: 1),
+              _webInfoRow(
+                icon: Icons.calendar_today_outlined,
+                label: 'Registered On',
+                value: _formattedDate,
+                isDark: isDark,
+              ),
+            ],
+          ),
+        ),
+
+        // Owner Specific Details (CNIC & Hostels)
+        if (user.role == 'owner') ...[
+          const SizedBox(height: 20),
+          _buildWebCnicCard(isDark),
+          const SizedBox(height: 20),
+          _buildWebOwnerHostelsCard(isDark),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildWebCnicCard(bool isDark) {
+    final cardBorder = isDark ? const Color(0xFF223242) : const Color(0xFFE2E8F0);
+    final subBg = isDark ? const Color(0xFF1B2836) : const Color(0xFFF8FAFC);
+    final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+
+    return _webCard(
+      isDark: isDark,
+      title: 'Owner CNIC Verification',
+      icon: Icons.badge_outlined,
+      child: user.cnicImageUrl == null || user.cnicImageUrl!.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: Text('No CNIC image uploaded.', style: TextStyle(color: textSecondary)),
+              ),
+            )
+          : GestureDetector(
+              onTap: () {
+                Get.dialog(
+                  Dialog(
+                    backgroundColor: Colors.transparent,
+                    child: Stack(
+                      alignment: Alignment.topRight,
+                      children: [
+                        InteractiveViewer(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Image.network(user.cnicImageUrl!, fit: BoxFit.contain),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                          onPressed: () => Get.back(),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: subBg,
+                    border: Border.all(color: cardBorder),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: AspectRatio(
+                    aspectRatio: 1.586,
+                    child: Image.network(
+                      user.cnicImageUrl!,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(child: CircularProgressIndicator());
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Center(
+                          child: Icon(Icons.broken_image_outlined, size: 48, color: AppColors.textSecondary),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildWebOwnerHostelsCard(bool isDark) {
+    final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection(AppConstants.colHostels)
+          .where('ownerId', isEqualTo: user.uid)
+          .snapshots(),
+      builder: (ctx, snap) {
+        if (!snap.hasData) {
+          return _webCard(
+            isDark: isDark,
+            title: 'Registered Hostels',
+            icon: Icons.home_work_outlined,
+            child: const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          );
+        }
+        final hostels = snap.data!.docs
+            .map((d) => HostelModel.fromMap(d.data() as Map<String, dynamic>, d.id))
+            .toList();
+
+        return _webCard(
+          isDark: isDark,
+          title: 'Registered Hostels (${hostels.length})',
+          icon: Icons.home_work_outlined,
+          child: hostels.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Center(
+                    child: Text('No hostels registered yet.', style: TextStyle(color: textSecondary)),
+                  ),
+                )
+              : Column(
+                  children: hostels.map((h) => _webHostelTile(h, isDark)).toList(),
+                ),
+        );
+      },
+    );
+  }
+
+  Widget _webHostelTile(HostelModel h, bool isDark) {
+    final cardBorder = isDark ? const Color(0xFF223242) : const Color(0xFFE2E8F0);
+    final subBg = isDark ? const Color(0xFF1B2836) : const Color(0xFFF8FAFC);
+    final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+
+    final statusColor = h.status == 'approved'
+        ? AppColors.success
+        : h.status == 'pending'
+            ? AppColors.warning
+            : AppColors.error;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: subBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cardBorder),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: h.images.isNotEmpty
+                ? Image.network(
+                    h.images.first,
+                    width: 52,
+                    height: 52,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _hostelPlaceholder(),
+                  )
+                : _hostelPlaceholder(),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  h.name,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimary),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${h.city} · PKR ${h.rentPerMonth.toStringAsFixed(0)}/mo',
+                  style: TextStyle(color: textSecondary, fontSize: 12),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.star, size: 13, color: Colors.amber),
+                    const SizedBox(width: 2),
+                    Text(
+                      h.averageRating.toStringAsFixed(1),
+                      style: TextStyle(fontSize: 12, color: textPrimary),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(Icons.reviews_outlined, size: 13, color: textSecondary),
+                    const SizedBox(width: 2),
+                    Text(
+                      '${h.totalReviews} reviews',
+                      style: TextStyle(fontSize: 12, color: textSecondary),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              h.status.capitalizeFirst ?? h.status,
+              style: TextStyle(
+                color: statusColor,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _webCard({
+    required bool isDark,
+    required Widget child,
+    String? title,
+    IconData? icon,
+    EdgeInsetsGeometry padding = const EdgeInsets.all(20),
+    Color? borderColor,
+  }) {
+    final cardBg = isDark ? const Color(0xFF14202E) : Colors.white;
+    final cardBorder = borderColor ?? (isDark ? const Color(0xFF223242) : const Color(0xFFE2E8F0));
+    final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
+
+    return Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (title != null && icon != null) ...[
+            Row(
+              children: [
+                Icon(icon, color: const Color(0xFF2DD4BF), size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: textPrimary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _webInfoRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required bool isDark,
+    bool isMonospace = false,
+  }) {
+    final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textSecondary = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    const tealAccent = Color(0xFF2DD4BF);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: tealAccent),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: textSecondary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: textPrimary,
+                    fontFamily: isMonospace ? 'monospace' : null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
   Widget _buildSliverAppBar() {
     return SliverAppBar(
       expandedHeight: 240,

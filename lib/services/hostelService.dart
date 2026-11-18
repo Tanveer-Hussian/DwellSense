@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fyp/utils/AppConstants.dart';
 import 'package:get/get.dart';
 import 'package:fyp/models/HostelModel.dart';
+import 'package:fyp/models/RoomModel.dart';
 
 
 class HostelService extends GetxService {
@@ -23,15 +24,54 @@ class HostelService extends GetxService {
     await _col.doc(hostelId).update(updates);
   }
 
-  // FR-3.4: Delete hostel
+  // FR-3.4: Delete hostel (called by admin upon accepting un-registration request or admin deletion)
   Future<void> deleteHostel(String hostelId) async {
     await _col.doc(hostelId).delete();
   }
 
-  // FR-8.1: Admin approves or rejects a listing
-  Future<void> updateHostelStatus(String hostelId, String status) async {
+  // Owner submits request to admin to unregister / close hostel with reason
+  Future<void> requestUnregistration(String hostelId, String reason) async {
     await _col.doc(hostelId).update({
+      'unregistrationRequested': true,
+      'unregistrationReason': reason,
+      'unregistrationRequestedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // Admin rejects unregistration request — hostel remains registered and active
+  Future<void> rejectUnregistration(String hostelId) async {
+    await _col.doc(hostelId).update({
+      'unregistrationRequested': false,
+      'unregistrationReason': FieldValue.delete(),
+      'unregistrationRequestedAt': FieldValue.delete(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // FR-8.1: Admin approves or rejects a listing, optionally assigning registration number
+  Future<void> updateHostelStatus(
+    String hostelId,
+    String status, {
+    String? registrationNumber,
+  }) async {
+    final updates = <String, dynamic>{
       'status': status,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    if (registrationNumber != null && registrationNumber.isNotEmpty) {
+      updates['registrationNumber'] = registrationNumber;
+    }
+    await _col.doc(hostelId).update(updates);
+  }
+
+  // Admin assigns or updates registration number for any hostel
+  Future<void> updateRegistrationNumber(
+    String hostelId,
+    String registrationNumber,
+  ) async {
+    await _col.doc(hostelId).update({
+      'registrationNumber': registrationNumber,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -126,6 +166,14 @@ class HostelService extends GetxService {
     return HostelModel.fromMap(doc.data()!, doc.id);
   }
 
+  // Stream a single hostel for real-time room vacancy and detail updates
+  Stream<HostelModel?> getHostelStream(String hostelId) {
+    return _col.doc(hostelId).snapshots().map((doc) {
+      if (!doc.exists || doc.data() == null) return null;
+      return HostelModel.fromMap(doc.data()!, doc.id);
+    });
+  }
+
   // Decrement available rooms after confirmed booking
   Future<void> decrementAvailableRooms(String hostelId) async {
     await _col.doc(hostelId).update({
@@ -189,5 +237,46 @@ class HostelService extends GetxService {
     if (updates.isNotEmpty) {
       await _col.doc(hostelId).update(updates);
     }
+  }
+
+  // ── Manual Bed Allocation: Atomically update room's assigned students ────
+  // Used by owners to manually mark beds as occupied/vacant and by admins
+  // to vacate manually-assigned beds.
+  Future<void> updateRoomAllocation(
+    String hostelId,
+    String roomId, {
+    required List<String> assignedStudents,
+    required List<String> assignedStudentNames,
+  }) async {
+    await _db.runTransaction((transaction) async {
+      final hostelRef = _col.doc(hostelId);
+      final hostelSnap = await transaction.get(hostelRef);
+      if (!hostelSnap.exists || hostelSnap.data() == null) {
+        throw Exception('Hostel document does not exist.');
+      }
+
+      final hostel = HostelModel.fromMap(hostelSnap.data()!, hostelId);
+      List<RoomModel> updatedRooms = List.from(hostel.rooms);
+
+      final roomIdx = updatedRooms.indexWhere((r) => r.id == roomId);
+      if (roomIdx == -1) {
+        throw Exception('Room not found in hostel.');
+      }
+
+      final room = updatedRooms[roomIdx];
+      updatedRooms[roomIdx] = room.copyWith(
+        assignedStudents: assignedStudents,
+        assignedStudentNames: assignedStudentNames,
+      );
+
+      final remainingAvailableRooms =
+          updatedRooms.where((r) => r.hasVacancy).length;
+
+      transaction.update(hostelRef, {
+        'rooms': updatedRooms.map((r) => r.toMap()).toList(),
+        'availableRooms': remainingAvailableRooms,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
   }
 }

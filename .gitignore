@@ -49,6 +49,9 @@ google-services.json
 GoogleService-Info.plist
 firebase_credentials.json
 
+# App API Keys — NEVER commit this file
+lib/utils/AppSecrets.dart
+
 # Android Keystore/Passwords
 key.properties
 *.jks

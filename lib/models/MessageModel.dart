@@ -6,6 +6,7 @@ class MessageModel {
   final String senderName;
   final String content;
   final DateTime createdAt;
+  final bool isRead; // true = blue tick, false = grey tick
 
   MessageModel({
     required this.id,
@@ -13,6 +14,7 @@ class MessageModel {
     required this.senderName,
     required this.content,
     required this.createdAt,
+    this.isRead = false,
   });
 
   static DateTime _parseDateTime(dynamic value) {
@@ -31,6 +33,7 @@ class MessageModel {
       senderName: map['senderName']?.toString() ?? '',
       content: map['content']?.toString() ?? '',
       createdAt: _parseDateTime(map['createdAt']),
+      isRead: map['isRead'] == true,
     );
   }
 
@@ -40,6 +43,7 @@ class MessageModel {
       'senderName': senderName,
       'content': content,
       'createdAt': FieldValue.serverTimestamp(),
+      'isRead': isRead,
     };
   }
 }

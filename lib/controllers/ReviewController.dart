@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:fyp/controllers/AuthController.dart';
 import 'package:fyp/models/ReviewModel.dart';
@@ -56,10 +56,19 @@ class ReviewController extends GetxController {
 
       await _reviewService.addReview(review);
 
-      // Update hostel's average rating
-      await _hostelService.updateHostelRating(hostelId, rating);
-
-      Get.snackbar('Review Submitted', 'Thank you for your feedback!');
+      // ── FR-9 Smart Recommendation Protection ───────────────────────────
+      // Only legitimate (unflagged) reviews update the hostel's official average rating & review count.
+      // Flagged reviews are held for admin moderation without polluting the recommendation model.
+      if (!isSuspicious) {
+        await _hostelService.updateHostelRating(hostelId, rating);
+        Get.snackbar('Review Submitted', 'Thank you for your feedback!');
+      } else {
+        Get.snackbar(
+          'Review Under Moderation',
+          'Your review has been submitted and held for moderation by our AI authenticity filter.',
+          duration: const Duration(seconds: 4),
+        );
+      }
       return true;
     } catch (e) {
       Get.snackbar('Error', 'Could not submit review.');
@@ -96,14 +105,29 @@ class ReviewController extends GetxController {
   }
 
   bool _detectFakeReviewLocal(String comment, double rating) {
-    if (comment.trim().length < 10 && (rating >= 5.0 || rating <= 1.0)) {
+    final trimmed = comment.trim();
+    // 1. Extreme rating with minimal descriptive detail
+    if (trimmed.length < 15 && (rating >= 4.5 || rating <= 1.5)) {
       return true;
     }
-    if (comment == comment.toUpperCase() && comment.length > 20) {
+    // 2. All-caps shouting/spam
+    if (trimmed == trimmed.toUpperCase() && trimmed.length > 20) {
       return true;
     }
-    final repeatedChars = RegExp(r'(.)\1{4,}');
-    if (repeatedChars.hasMatch(comment)) return true;
+    // 3. Repeated character spam (e.g. "soooo", "greeeeat")
+    final repeatedChars = RegExp(r'(.)\1{3,}');
+    if (repeatedChars.hasMatch(trimmed)) return true;
+
+    // 4. Rating-Sentiment contradiction
+    final lower = trimmed.toLowerCase();
+    final negWords = ['terrible', 'worst', 'horrible', 'dirty', 'scam', 'bad', 'disaster', 'awful'];
+    final posWords = ['excellent', 'amazing', 'best', 'wonderful', 'perfect', 'love', 'superb'];
+    final hasNegative = negWords.any((w) => lower.contains(w));
+    final hasPositive = posWords.any((w) => lower.contains(w));
+
+    if (rating >= 4.0 && hasNegative && !hasPositive) return true;
+    if (rating <= 2.0 && hasPositive && !hasNegative) return true;
+
     return false;
   }
 
@@ -126,8 +150,11 @@ class ReviewController extends GetxController {
   }
 
   // Approve a previously flagged review (mark as legitimate)
-  Future<void> approveReview(String reviewId) async {
+  Future<void> approveReview(String reviewId, {String? hostelId, double? rating}) async {
     await _reviewService.approveReview(reviewId);
+    if (hostelId != null && rating != null) {
+      await _hostelService.updateHostelRating(hostelId, rating);
+    }
     Get.snackbar('Approved', 'Review approved as legitimate.');
   }
 

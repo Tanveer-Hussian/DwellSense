@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:fyp/utils/AppColors.dart';
 import 'package:fyp/views/shared%20Widgets/StatusConfig.dart';
@@ -17,18 +16,21 @@ class StatusChip extends StatelessWidget {
       case 'approved':
       case 'confirmed':
       case 'resolved':
-        return StatusConfig('✓ ${_capitalize(status)}', AppColors.success,
+        return StatusConfig(_capitalize(status), AppColors.success,
             AppColors.chipApproved);
       case 'pending':
         return StatusConfig(
-            '⏳ Pending', AppColors.warning, AppColors.chipPending);
+            'Pending', AppColors.warning, AppColors.chipPending);
       case 'rejected':
       case 'cancelled':
-        return StatusConfig('✗ ${_capitalize(status)}', AppColors.error,
+        return StatusConfig(_capitalize(status), AppColors.error,
             AppColors.chipRejected);
+      case 'expired':
+        return StatusConfig('Expired', AppColors.textSecondary,
+            AppColors.divider.withValues(alpha: 0.5));
       case 'in_progress':
-        return StatusConfig('🔄 In Progress', AppColors.info,
-            AppColors.info.withOpacity(0.1));
+        return StatusConfig('In Progress', AppColors.info,
+            AppColors.info.withValues(alpha: 0.1));
       default:
         return StatusConfig(status, AppColors.textSecondary, AppColors.divider);
     }
@@ -45,7 +47,7 @@ class StatusChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: config.bgColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: config.textColor.withOpacity(0.3)),
+        border: Border.all(color: config.textColor.withValues(alpha: 0.3)),
       ),
       child: Text(
         config.label,

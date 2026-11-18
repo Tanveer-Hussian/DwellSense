@@ -13,21 +13,33 @@ import 'package:fyp/views/admin/AdminUserDetailScreen.dart';
 import 'package:fyp/views/auth/ForgetPasswordScreen.dart';
 import 'package:fyp/views/auth/LoginScreen.dart';
 import 'package:fyp/views/auth/RegistrationScreen.dart';
+import 'package:fyp/views/auth/WelcomeScreen.dart';
 import 'package:fyp/views/owner/AddHostelScreen.dart';
 import 'package:fyp/views/owner/OwnerBookingsScreen.dart' show OwnerBookingsScreen;
 import 'package:fyp/views/owner/OwnerComplaintsScreen.dart';
 import 'package:fyp/views/owner/OwnerHomeScreen.dart';
+import 'package:fyp/views/owner/OwnerHostelDetailScreen.dart';
+import 'package:fyp/views/owner/OwnerHostelResidentsScreen.dart';
+import 'package:fyp/views/owner/OwnerSettingsScreen.dart';
 import 'package:fyp/views/student/BookingRequestScreen.dart';
 import 'package:fyp/views/student/HostelDetailSceen.dart';
 import 'package:fyp/views/student/MyComplaintScreen.dart';
+import 'package:fyp/views/student/StudentSettingsScreen.dart';
+import 'package:fyp/views/admin/AdminSettingsScreen.dart';
 import 'package:fyp/views/student/StudentHomeScreen.dart';
 import 'package:fyp/views/student/SubmitComplainScreen.dart';
 import 'package:fyp/views/student/WriteReviewScreen.dart';
+import 'package:fyp/views/student/StudentAllHostelsScreen.dart';
 import 'package:fyp/views/student/HostelSearchScreen.dart';
+import 'package:fyp/views/student/SafepayCheckoutScreen.dart';
 import 'package:fyp/views/admin/AdminChatListScreen.dart';
 import 'package:fyp/views/owner/OwnerChatListScreen.dart';
+import 'package:fyp/views/owner/OwnerStudentChatListScreen.dart';
+import 'package:fyp/views/student/StudentChatListScreen.dart';
 import 'package:fyp/views/shared Widgets/ChatConversationScreen.dart';
+import 'package:fyp/views/shared Widgets/OnboardingScreen.dart';
 import 'package:get/get.dart';      
+
 
 Future<void> main() async {
   // Ensure Flutter is initialized before calling native plugins
@@ -40,6 +52,7 @@ Future<void> main() async {
         appId: "1:1024160107828:android:5bb9cbc57381d7f552a961", 
         messagingSenderId: "1024160107828", 
         projectId: "smart-hostel-system-9f924",
+        authDomain: "smart-hostel-system-9f924.firebaseapp.com",
         storageBucket: "smart-hostel-system-9f924.firebasestorage.app"
       ),
    ); 
@@ -58,6 +71,8 @@ class SmartHostelApp extends StatelessWidget {
  
       // ── Theme ──────────────────────────────────────────────────────────────
       theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.system,
  
       // ── Initial Binding: registers all services + controllers ──────────────
       initialBinding: AppBinding(),
@@ -71,6 +86,16 @@ class SmartHostelApp extends StatelessWidget {
         GetPage(
           name: AppRoutes.splash,
           page: () => const SplashScreen(),
+        ),
+        GetPage(
+          name: AppRoutes.welcome,
+          page: () => const WelcomeScreen(),
+          transition: Transition.fadeIn,
+        ),
+        GetPage(
+          name: AppRoutes.onboarding,
+          page: () => const OnboardingScreen(),
+          transition: Transition.fadeIn,
         ),
         GetPage(
           name: AppRoutes.login,
@@ -92,6 +117,11 @@ class SmartHostelApp extends StatelessWidget {
           name: AppRoutes.studentHome,
           page: () => const StudentHomeScreen(),
           transition: Transition.fadeIn,
+        ),
+        GetPage(
+          name: AppRoutes.allHostels,
+          page: () => const StudentAllHostelsScreen(),
+          transition: Transition.rightToLeft,
         ),
         GetPage(
           name: AppRoutes.hostelSearch,
@@ -124,6 +154,19 @@ class SmartHostelApp extends StatelessWidget {
           name: AppRoutes.myComplaints,
           page: () => const MyComplaintsScreen(),
         ),
+        GetPage(
+          name: AppRoutes.safepayCheckout,
+          page: () {
+            final args = Get.arguments as Map<String, dynamic>;
+            return SafepayCheckoutScreen(
+              bookingId    : args['bookingId']    as String,
+              amount       : args['amount']       as double,
+              studentEmail : args['studentEmail'] as String,
+              hostelName   : args['hostelName']   as String,
+            );
+          },
+          transition: Transition.downToUp,
+        ),
  
         // Owner
         GetPage(
@@ -139,6 +182,16 @@ class SmartHostelApp extends StatelessWidget {
         GetPage(
           name: AppRoutes.editHostel,
           page: () => const AddHostelScreen(), // reuse same form; args has hostel
+          transition: Transition.rightToLeft,
+        ),
+        GetPage(
+          name: AppRoutes.ownerHostelDetail,
+          page: () => const OwnerHostelDetailScreen(),
+          transition: Transition.rightToLeft,
+        ),
+        GetPage(
+          name: AppRoutes.ownerHostelResidents,
+          page: () => const OwnerHostelResidentsScreen(),
           transition: Transition.rightToLeft,
         ),
         GetPage(
@@ -194,6 +247,16 @@ class SmartHostelApp extends StatelessWidget {
           transition: Transition.rightToLeft,
         ),
         GetPage(
+          name: AppRoutes.ownerStudentChats,
+          page: () => const OwnerStudentChatListScreen(),
+          transition: Transition.rightToLeft,
+        ),
+        GetPage(
+          name: AppRoutes.studentChats,
+          page: () => const StudentChatListScreen(),
+          transition: Transition.rightToLeft,
+        ),
+        GetPage(
           name: AppRoutes.chatConversation,
           page: () => const ChatConversationScreen(),
           transition: Transition.rightToLeft,
@@ -207,6 +270,21 @@ class SmartHostelApp extends StatelessWidget {
         GetPage(
           name: AppRoutes.notifications,
           page: () => const NotificationsScreen(),
+        ),
+        GetPage(
+          name: AppRoutes.adminSettings,
+          page: () => const AdminSettingsScreen(),
+          transition: Transition.rightToLeft,
+        ),
+        GetPage(
+          name: AppRoutes.ownerSettings,
+          page: () => const OwnerSettingsScreen(),
+          transition: Transition.rightToLeft,
+        ),
+        GetPage(
+          name: AppRoutes.studentSettings,
+          page: () => const StudentSettingsScreen(),
+          transition: Transition.rightToLeft,
         ),
       ],
  

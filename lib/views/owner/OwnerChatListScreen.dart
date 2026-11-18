@@ -1,5 +1,6 @@
 // Owner Chat List: shows the owner's conversation with the admin
 import 'package:flutter/material.dart';
+import 'package:fyp/controllers/AuthController.dart';
 import 'package:fyp/controllers/ChatController.dart';
 import 'package:fyp/routes/AppRoutes.dart';
 import 'package:fyp/utils/AppColors.dart';
@@ -27,36 +28,57 @@ class _OwnerChatListScreenState extends State<OwnerChatListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Messages'),
         backgroundColor: AppColors.primary,
+        title: const Text('Messages'),
+        
       ),
       body: Obx(() {
         final room = _chatCtrl.ownerChatRoom.value;
 
         if (room == null) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.support_agent_outlined,
-                    size: 80,
-                    color: AppColors.textSecondary.withOpacity(0.3)),
-                const SizedBox(height: 16),
-                const Text(
-                  'No Messages Yet',
+          return ListView(
+            children: [
+              ListTile(
+                onTap: () async {
+                  final auth = Get.find<AuthController>();
+                  final user = auth.currentUser.value;
+                  if (user != null) {
+                    final roomId = await _chatCtrl.startOrGetConversation(
+                      ownerId: user.uid,
+                      ownerName: user.name,
+                      ownerEmail: user.email,
+                    );
+                    Get.toNamed(
+                      AppRoutes.chatConversation,
+                      arguments: {
+                        'roomId': roomId,
+                        'title': 'Admin Support',
+                      },
+                    );
+                  }
+                },
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                leading: CircleAvatar(
+                  radius: 28,
+                  backgroundColor: AppColors.primaryLight,
+                  child: const Icon(Icons.admin_panel_settings,
+                      color: AppColors.primaryDark, size: 28),
+                ),
+                title: const Text(
+                  'Admin Support',
                   style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15),
                 ),
-                const SizedBox(height: 6),
-                const Text(
-                  'The admin will contact you here\nregarding your hostel listings.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.textSecondary),
+                subtitle: const Text(
+                  'Tap to message admin',
+                  style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.normal),
                 ),
-              ],
-            ),
+              ),
+            ],
           );
         }
 
@@ -145,3 +167,5 @@ class _OwnerChatListScreenState extends State<OwnerChatListScreen> {
     return DateFormat('MMM d').format(dt);
   }
 }
+
+

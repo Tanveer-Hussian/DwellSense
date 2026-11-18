@@ -1,11 +1,12 @@
-// lib/views/shared/custom_button.dart
+// lib/views/shared Widgets/CustomButtons.dart
 // ─────────────────────────────────────────────────────────────────────────────
-// Reusable button that shows a loading spinner when isLoading is true.
+// Reusable adaptive button that shows a loading spinner when isLoading is true.
+// Automatically adjusts padding, height, and typography on Web vs Mobile.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
 import 'package:fyp/utils/AppColors.dart';
-
+import 'package:fyp/utils/Responsive.dart';
 
 class CustomButton extends StatelessWidget {
   final String text;
@@ -15,6 +16,8 @@ class CustomButton extends StatelessWidget {
   final Color? textColor;
   final IconData? icon;
   final bool outlined;
+  final double? width;
+  final double? height;
 
   const CustomButton({
     super.key,
@@ -25,57 +28,84 @@ class CustomButton extends StatelessWidget {
     this.textColor,
     this.icon,
     this.outlined = false,
+    this.width,
+    this.height,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Disable button while loading
     final effectiveOnPressed = isLoading ? null : onPressed;
+    final isWide = Responsive.isWide(context);
+    final effectiveHeight = height ?? (isWide ? 42.0 : 48.0);
+    final effectiveFontSize = isWide ? 13.5 : 15.0;
+    final iconSize = isWide ? 16.0 : 18.0;
 
-    if (outlined) {
-      return OutlinedButton.icon(
-        onPressed: effectiveOnPressed,
-        icon: isLoading
-            ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : (icon != null ? Icon(icon) : const SizedBox.shrink()),
-        label: Text(text),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          side: const BorderSide(color: AppColors.primary),
-        ),
-      );
-    }
-
-    return ElevatedButton(
-      onPressed: effectiveOnPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: backgroundColor ?? AppColors.primary,
-        foregroundColor: textColor ?? Colors.white,
-      ),
-      child: isLoading
-          ? const SizedBox(
-              height: 20,
-              width: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: Colors.white,
-              ),
-            )
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (icon != null) ...[
-                  Icon(icon, size: 18),
-                  const SizedBox(width: 8),
-                ],
-                Text(text),
+    Widget childContent = isLoading
+        ? SizedBox(
+            height: isWide ? 18 : 20,
+            width: isWide ? 18 : 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: outlined ? AppColors.primary : Colors.white,
+            ),
+          )
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: iconSize),
+                const SizedBox(width: 8),
               ],
+              Flexible(
+                child: Text(
+                  text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: effectiveFontSize,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ),
+            ],
+          );
+
+    final buttonStyle = outlined
+        ? OutlinedButton.styleFrom(
+            padding: EdgeInsets.symmetric(
+              horizontal: isWide ? 18 : 22,
+              vertical: isWide ? 10 : 13,
+            ),
+            side: BorderSide(color: backgroundColor ?? AppColors.primary, width: 1.5),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          )
+        : ElevatedButton.styleFrom(
+            backgroundColor: backgroundColor ?? AppColors.primary,
+            foregroundColor: textColor ?? Colors.white,
+            padding: EdgeInsets.symmetric(
+              horizontal: isWide ? 18 : 22,
+              vertical: isWide ? 10 : 13,
+            ),
+            elevation: isWide ? 1 : 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          );
+
+    return SizedBox(
+      width: width,
+      height: effectiveHeight,
+      child: outlined
+          ? OutlinedButton(
+              onPressed: effectiveOnPressed,
+              style: buttonStyle,
+              child: childContent,
+            )
+          : ElevatedButton(
+              onPressed: effectiveOnPressed,
+              style: buttonStyle,
+              child: childContent,
             ),
     );
   }
 }
-

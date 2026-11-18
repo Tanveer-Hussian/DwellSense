@@ -1,6 +1,4 @@
-// Shared real-time chat conversation screen (used by both Admin and Owner)
-// Receives {'roomId': String, 'title': String} via Get.arguments
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fyp/controllers/AuthController.dart';
 import 'package:fyp/controllers/ChatController.dart';
@@ -24,6 +22,9 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
 
   late final String roomId;
   late final String title;
+  late final bool isOwnerStudentChat;
+  late final String recipientId;
+  late final String hostelName;
 
   @override
   void initState() {
@@ -31,7 +32,16 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     final args = Get.arguments as Map<String, dynamic>;
     roomId = args['roomId'] as String;
     title = args['title'] as String;
-    _chatCtrl.listenToMessages(roomId);
+    isOwnerStudentChat =
+        (args['chatType'] as String? ?? 'admin_owner') == 'owner_student';
+    recipientId = args['recipientId'] as String? ?? '';
+    hostelName = args['hostelName'] as String? ?? '';
+
+    if (isOwnerStudentChat) {
+      _chatCtrl.listenToOwnerStudentMessages(roomId);
+    } else {
+      _chatCtrl.listenToMessages(roomId);
+    }
   }
 
   @override
@@ -54,11 +64,22 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     });
   }
 
-  Future<void> _sendMessage() async {
-    final text = _msgCtrl.text.trim();
+  Future<void> _sendMessage([String? quickText]) async {
+    final text = quickText ?? _msgCtrl.text.trim();
     if (text.isEmpty) return;
-    _msgCtrl.clear();
-    await _chatCtrl.sendChatMessage(roomId, text);
+    if (quickText == null) {
+      _msgCtrl.clear();
+    }
+    if (isOwnerStudentChat) {
+      await _chatCtrl.sendOwnerStudentChatMessage(
+        roomId: roomId,
+        content: text,
+        recipientId: recipientId,
+        hostelName: hostelName,
+      );
+    } else {
+      await _chatCtrl.sendChatMessage(roomId, text);
+    }
     _scrollToBottom();
   }
 
@@ -66,6 +87,17 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   Widget build(BuildContext context) {
     final myUid = _authCtrl.currentUser.value?.uid ?? '';
 
+    // If NOT web (e.g. Android/iOS app), preserve existing UI with zero impact
+    if (!kIsWeb) {
+      return _buildMobileScaffold(context, myUid);
+    }
+
+    // Otherwise render modern web-optimized experience
+    return _buildWebScaffold(context, myUid);
+  }
+
+  // ── Original Mobile Layout (Untouched for App) ───────────────────────────
+  Widget _buildMobileScaffold(BuildContext context, String myUid) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.primary,
@@ -77,7 +109,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: Colors.white)),
-            const Text('Online',
+            const Text('Chat',
                 style: TextStyle(fontSize: 11, color: Colors.white70)),
           ],
         ),
@@ -85,7 +117,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       ),
       body: Column(
         children: [
-          // ── Messages list ─────────────────────────────────────────────────
+          // ── Messages list ────────────────────────────────────────────────
           Expanded(
             child: Obx(() {
               final msgs = _chatCtrl.activeRoomMessages;
@@ -96,9 +128,10 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                     children: [
                       Icon(Icons.chat_bubble_outline,
                           size: 64,
-                          color: AppColors.textSecondary.withOpacity(0.3)),
+                          color: AppColors.textSecondary.withValues(alpha: 0.3)),
                       const SizedBox(height: 12),
-                      const Text('No messages yet.\nSend one to start the conversation!',
+                      const Text(
+                          'No messages yet.\nSend one to start the conversation!',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: AppColors.textSecondary)),
                     ],
@@ -113,13 +146,12 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                 itemBuilder: (ctx, i) {
                   final msg = msgs[i];
                   final isMe = msg.senderId == myUid;
-                  // Show date divider if different day from previous message
                   final showDate = i == 0 ||
                       !_isSameDay(msgs[i - 1].createdAt, msg.createdAt);
                   return Column(
                     children: [
                       if (showDate) _DateDivider(date: msg.createdAt),
-                      _MessageBubble(msg: msg, isMe: isMe),
+                      _MessageBubble(msg: msg, isMe: isMe, isWeb: false),
                     ],
                   );
                 },
@@ -127,7 +159,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
             }),
           ),
 
-          // ── Input bar ─────────────────────────────────────────────────────
+          // ── Input bar ────────────────────────────────────────────────────
           Container(
             padding: EdgeInsets.fromLTRB(
                 12, 8, 12, MediaQuery.of(context).padding.bottom + 8),
@@ -135,7 +167,9 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                    color: Colors.black12, blurRadius: 6, offset: Offset(0, -2))
+                    color: Colors.black12,
+                    blurRadius: 6,
+                    offset: Offset(0, -2))
               ],
             ),
             child: Row(
@@ -156,8 +190,8 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                         hintStyle:
                             TextStyle(color: AppColors.textSecondary),
                         border: InputBorder.none,
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        contentPadding: EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
                       ),
                       onSubmitted: (_) => _sendMessage(),
                     ),
@@ -168,11 +202,12 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                   color: AppColors.primary,
                   shape: const CircleBorder(),
                   child: InkWell(
-                    onTap: _sendMessage,
+                    onTap: () => _sendMessage(),
                     customBorder: const CircleBorder(),
                     child: const Padding(
                       padding: EdgeInsets.all(12),
-                      child: Icon(Icons.send, color: Colors.white, size: 20),
+                      child:
+                          Icon(Icons.send, color: Colors.white, size: 20),
                     ),
                   ),
                 ),
@@ -181,6 +216,274 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // ── Enhanced Web Layout (Owner, Student, Admin Panels) ────────────────────
+  Widget _buildWebScaffold(BuildContext context, String myUid) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final initial = title.isNotEmpty ? title[0].toUpperCase() : '?';
+    final cardBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF2C2C2C) : const Color(0xFFE9ECEF);
+    final scaffoldBg = isDark ? const Color(0xFF141414) : const Color(0xFFF7F9FA);
+
+    return Scaffold(
+      backgroundColor: scaffoldBg,
+      appBar: AppBar(
+        backgroundColor: AppColors.primary,
+        elevation: 0,
+        leading: const BackButton(color: Colors.white),
+        title: Row(
+          children: [
+            Stack(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  child: Text(
+                    initial,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: Colors.greenAccent,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.primary, width: 2),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        hostelName.isNotEmpty
+                            ? hostelName
+                            : (isOwnerStudentChat ? 'Resident Chat' : 'Support Chat'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.85),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '• Active',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.greenAccent.shade100,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 980),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: borderColor),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.04),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Column(
+                children: [
+                  // ── Messages Area ─────────────────────────────────────────
+                  Expanded(
+                    child: Obx(() {
+                      final msgs = _chatCtrl.activeRoomMessages;
+                      if (msgs.isEmpty) {
+                        return _buildWebEmptyState(isDark);
+                      }
+                      _scrollToBottom();
+                      return ListView.builder(
+                        controller: _scrollCtrl,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 20),
+                        itemCount: msgs.length,
+                        itemBuilder: (ctx, i) {
+                          final msg = msgs[i];
+                          final isMe = msg.senderId == myUid;
+                          final showDate = i == 0 ||
+                              !_isSameDay(msgs[i - 1].createdAt, msg.createdAt);
+                          return Column(
+                            children: [
+                              if (showDate) _DateDivider(date: msg.createdAt),
+                              _MessageBubble(msg: msg, isMe: isMe, isWeb: true),
+                            ],
+                          );
+                        },
+                      );
+                    }),
+                  ),
+
+                  // ── Web Input Bar ─────────────────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                      border: Border(top: BorderSide(color: borderColor)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? const Color(0xFF272727)
+                                  : const Color(0xFFF4F6F8),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: isDark
+                                    ? const Color(0xFF383838)
+                                    : const Color(0xFFE2E8F0),
+                              ),
+                            ),
+                            child: TextField(
+                              controller: _msgCtrl,
+                              minLines: 1,
+                              maxLines: 4,
+                              textCapitalization: TextCapitalization.sentences,
+                              decoration: const InputDecoration(
+                                hintText:
+                                    'Type a message... (Press Enter to send)',
+                                hintStyle: TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 13),
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 18, vertical: 12),
+                              ),
+                              onSubmitted: (_) => _sendMessage(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Material(
+                          color: AppColors.primary,
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            onTap: () => _sendMessage(),
+                            customBorder: const CircleBorder(),
+                            child: const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: Icon(Icons.send_rounded,
+                                  color: Colors.white, size: 20),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWebEmptyState(bool isDark) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.chat_bubble_outline_rounded,
+                size: 48,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'Start conversation with $title',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hostelName.isNotEmpty
+                  ? 'Ask about bed vacancies, amenities, check-in dates, or hostel policies for $hostelName.'
+                  : 'Send a message to begin real-time communication.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark
+                    ? AppColors.darkTextSecondary
+                    : AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                _buildQuickReplyChip('👋 Hello!'),
+                _buildQuickReplyChip('Could you share check-in details?'),
+                _buildQuickReplyChip('Is room service & Wi-Fi available?'),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickReplyChip(String text) {
+    return ActionChip(
+      label: Text(text, style: const TextStyle(fontSize: 12)),
+      onPressed: () => _sendMessage(text),
+      backgroundColor: AppColors.primary.withValues(alpha: 0.08),
+      side: BorderSide(color: AppColors.primary.withValues(alpha: 0.25)),
     );
   }
 
@@ -197,15 +500,29 @@ class _DateDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     final label = _label(date);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 14),
       child: Row(
         children: [
           const Expanded(child: Divider()),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(label,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF2A2A2A)
+                    : const Color(0xFFE2E8F0),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                label,
                 style: const TextStyle(
-                    fontSize: 11, color: AppColors.textSecondary)),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
           ),
           const Expanded(child: Divider()),
         ],
@@ -228,72 +545,133 @@ class _DateDivider extends StatelessWidget {
   }
 }
 
-// ── Single message bubble ─────────────────────────────────────────────────────
+// ── Single message bubble with WhatsApp-style read ticks ──────────────────────
 class _MessageBubble extends StatelessWidget {
   final MessageModel msg;
   final bool isMe;
-  const _MessageBubble({required this.msg, required this.isMe});
+  final bool isWeb;
+  const _MessageBubble({
+    required this.msg,
+    required this.isMe,
+    this.isWeb = false,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final maxBubbleWidth = isWeb
+        ? 560.0
+        : MediaQuery.of(context).size.width * 0.75;
+
+    final receivedBubbleBg = isWeb
+        ? (isDark ? const Color(0xFF262626) : Colors.white)
+        : Colors.white;
+
+    final receivedTextColor = isWeb
+        ? (isDark ? Colors.white : AppColors.textPrimary)
+        : AppColors.textPrimary;
+
+    final receivedBorder = isWeb
+        ? Border.all(
+            color: isDark ? const Color(0xFF333333) : const Color(0xFFE2E8F0))
+        : null;
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.75),
-        margin: const EdgeInsets.only(bottom: 8),
+        constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+        margin: const EdgeInsets.only(bottom: 10),
         child: Column(
           crossAxisAlignment:
               isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             if (!isMe)
               Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: 2),
-                child: Text(msg.senderName,
-                    style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary)),
+                padding: const EdgeInsets.only(left: 4, bottom: 3),
+                child: Text(
+                  msg.senderName,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
               ),
             Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: isMe ? AppColors.primary : Colors.white,
+                color: isMe ? AppColors.primary : receivedBubbleBg,
+                border: isMe ? null : receivedBorder,
                 borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft:
-                      isMe ? const Radius.circular(18) : const Radius.circular(4),
-                  bottomRight:
-                      isMe ? const Radius.circular(4) : const Radius.circular(18),
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: isMe
+                      ? const Radius.circular(16)
+                      : const Radius.circular(4),
+                  bottomRight: isMe
+                      ? const Radius.circular(4)
+                      : const Radius.circular(16),
                 ),
                 boxShadow: [
                   BoxShadow(
-                      color: Colors.black.withOpacity(0.06),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2)),
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
                 ],
               ),
               child: Text(
                 msg.content,
                 style: TextStyle(
-                    color: isMe ? Colors.white : AppColors.textPrimary,
-                    fontSize: 14,
-                    height: 1.4),
+                  color: isMe ? Colors.white : receivedTextColor,
+                  fontSize: 14,
+                  height: 1.4,
+                ),
               ),
             ),
             Padding(
               padding: const EdgeInsets.only(top: 3, left: 4, right: 4),
-              child: Text(
-                DateFormat('hh:mm a').format(msg.createdAt),
-                style: const TextStyle(
-                    fontSize: 10, color: AppColors.textSecondary),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    DateFormat('hh:mm a').format(msg.createdAt),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  if (isMe) ...[
+                    const SizedBox(width: 3),
+                    _ReadTick(isRead: msg.isRead),
+                  ],
+                ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── WhatsApp-style double tick ────────────────────────────────────────────────
+class _ReadTick extends StatelessWidget {
+  final bool isRead;
+  const _ReadTick({required this.isRead});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isRead ? Colors.blue : Colors.grey;
+    return Stack(
+      children: [
+        Icon(Icons.done, size: 13, color: color),
+        Positioned(
+          left: 5,
+          child: Icon(Icons.done, size: 13, color: color),
+        ),
+      ],
     );
   }
 }

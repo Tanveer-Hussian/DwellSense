@@ -1,15 +1,22 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:fyp/controllers/AuthController.dart';
 import 'package:fyp/controllers/BookingController.dart';
 import 'package:fyp/controllers/ComplaintController.dart';
 import 'package:fyp/controllers/HostelController.dart';
+import 'package:fyp/controllers/NotificationController.dart';
 import 'package:fyp/controllers/ReviewController.dart';
 import 'package:fyp/routes/AppRoutes.dart';
 import 'package:fyp/utils/AppColors.dart';
+import 'package:fyp/utils/Responsive.dart';
+import 'package:fyp/views/admin/AdminSettingsScreen.dart';
 import 'package:fyp/views/admin/ComplaintsTab.dart';
 import 'package:fyp/views/admin/HostelsTab.dart';
 import 'package:fyp/views/admin/OverviewTab.dart';
 import 'package:fyp/views/admin/ReviewsTab.dart';
 import 'package:fyp/views/admin/UsersTab.dart';
+import 'package:fyp/views/shared%20Widgets/FloatingBottomNavBar.dart';
+import 'package:fyp/views/shared%20Widgets/WebSidebarShell.dart';
 import 'package:get/get.dart';
 
 
@@ -27,6 +34,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   late final ComplaintController complaintCtrl;
   
   int _currentIndex = 0;
+
+  static const _webNavItems = [
+    SidebarNavItem(icon: Icons.home_outlined, activeIcon: Icons.home, label: 'Overview'),
+    SidebarNavItem(icon: Icons.domain_outlined, activeIcon: Icons.domain, label: 'Hostels'),
+    SidebarNavItem(icon: Icons.people_outline, activeIcon: Icons.people, label: 'Users'),
+    SidebarNavItem(icon: Icons.report_problem_outlined, activeIcon: Icons.report_problem, label: 'Complaints'),
+    SidebarNavItem(icon: Icons.star_outline, activeIcon: Icons.star, label: 'Reviews'),
+  ];
 
   @override
   void initState() {
@@ -49,71 +64,105 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isWide = Responsive.isWide(context);
+    final authCtrl = Get.find<AuthController>();
+    final notifCtrl = Get.find<NotificationController>();
+
+    final tabs = [
+      OverviewTab(hostelCtrl: hostelCtrl),
+      isWide
+          ? _wrapWithAppBar('Hostels', HostelsTab(hostelCtrl: hostelCtrl), isWide: true)
+          : HostelsTab(hostelCtrl: hostelCtrl),
+      isWide
+          ? _wrapWithAppBar('Users', const UsersTab(), isWide: true)
+          : const UsersTab(),
+      isWide
+          ? _wrapWithAppBar('Complaints', ComplaintsTab(complaintCtrl: complaintCtrl), isWide: true)
+          : ComplaintsTab(complaintCtrl: complaintCtrl),
+      isWide
+          ? _wrapWithAppBar('Reviews', ReviewsTab(reviewCtrl: reviewCtrl), isWide: true)
+          : ReviewsTab(reviewCtrl: reviewCtrl),
+    ];
+
+    // ── Web layout: sidebar shell ──────────────────────────────────────────
+    if (isWide) {
+      return Obx(() => WebSidebarShell(
+            currentIndex: _currentIndex,
+            onTap: _onTabTapped,
+            items: _webNavItems,
+            userName: authCtrl.currentUser.value?.name ?? 'Admin',
+            roleLabel: 'Admin Panel',
+            notificationCount: notifCtrl.unreadCount.value,
+            body: IndexedStack(
+              index: _currentIndex,
+              children: tabs,
+            ),
+          ));
+    }
+
+    // ── Mobile layout (unchanged) ──────────────────────────────────────────
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: [
-          OverviewTab(hostelCtrl: hostelCtrl),
-          _wrapWithAppBar('Hostels', HostelsTab(hostelCtrl: hostelCtrl)),
-          _wrapWithAppBar('Users', const UsersTab()),
-          _wrapWithAppBar('Complaints', ComplaintsTab(complaintCtrl: complaintCtrl)),
-          _wrapWithAppBar('Reviews', ReviewsTab(reviewCtrl: reviewCtrl)),
-        ],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: PopScope(
+        canPop: _currentIndex == 0,
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop && _currentIndex != 0) {
+            setState(() => _currentIndex = 0);
+          }
+        },
+        child: IndexedStack(
+          index: _currentIndex,
+          children: tabs,
+        ),
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: _onTabTapped,
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
-          selectedItemColor: AppColors.primary,
-          unselectedItemColor: AppColors.textSecondary,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 12),
-          elevation: 0,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Overview',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.domain_outlined),
-              activeIcon: Icon(Icons.domain),
-              label: 'Hostels',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.people_outline),
-              activeIcon: Icon(Icons.people),
-              label: 'Users',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.report_problem_outlined),
-              activeIcon: Icon(Icons.report_problem),
-              label: 'Complaints',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.star_outline),
-              activeIcon: Icon(Icons.star),
-              label: 'Reviews',
-            ),
-          ],
-        ),
+      bottomNavigationBar: FloatingBottomNavBar(
+        currentIndex: _currentIndex,
+        onTap: _onTabTapped,
+        items: const [
+          FloatingNavItem(
+            icon: Icons.home_outlined,
+            activeIcon: Icons.home,
+            label: 'Overview',
+          ),
+          FloatingNavItem(
+            icon: Icons.domain_outlined,
+            activeIcon: Icons.domain,
+            label: 'Hostels',
+          ),
+          FloatingNavItem(
+            icon: Icons.people_outline,
+            activeIcon: Icons.people,
+            label: 'Users',
+          ),
+          FloatingNavItem(
+            icon: Icons.report_problem_outlined,
+            activeIcon: Icons.report_problem,
+            label: 'Complaints',
+          ),
+          FloatingNavItem(
+            icon: Icons.star_outline,
+            activeIcon: Icons.star,
+            label: 'Reviews',
+          ),
+        ],
       ),
     );
   }
 
-  Widget _wrapWithAppBar(String title, Widget child) {
+  Widget _wrapWithAppBar(String title, Widget child, {bool isWide = false}) {
+    // On web, tabs are inside the sidebar shell — no extra AppBar needed.
+    if (isWide) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      return Container(
+        color: isDark ? const Color(0xFF0F171E) : const Color(0xFFF6F8FA),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1140),
+            child: child,
+          ),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
@@ -125,12 +174,20 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
             onPressed: () => Get.toNamed(AppRoutes.adminChats),
           ),
           IconButton(
-            icon: const Icon(Icons.person_outline),
-            onPressed: () => Get.toNamed(AppRoutes.profile),
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () => kIsWeb
+                ? Get.toNamed(AppRoutes.profile)
+                : Get.to(() => const AdminSettingsScreen()),
           ),
         ],
       ),
-      body: child,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1140),
+          child: child,
+        ),
+      ),
     );
   }
 }

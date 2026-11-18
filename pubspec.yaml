@@ -28,7 +28,6 @@ dependencies:
   flutter_map: ^7.0.2                # Free OpenStreetMap tiles (no API key needed)
   latlong2: ^0.9.1                   # LatLng type for flutter_map
   geolocator: ^10.1.0                # Get device GPS location
-  geocoding: ^2.1.1                  # Convert coordinates ↔ addresses
   url_launcher: ^6.2.4               # Open Google Maps navigation
 
   # ─── UI & Icons ─────────────────────────────────────────────────────────────
@@ -42,17 +41,15 @@ dependencies:
   intl: ^0.18.1                      # Date/number formatting (internationalization)
   shared_preferences: ^2.2.2         # Persistent local key-value storage
   connectivity_plus: ^5.0.2          # Monitor network connectivity
-  flutter_local_notifications: ^19.5.0  # Local push notifications
 
   # ─── Forms & Validation ─────────────────────────────────────────────────────
   email_validator: ^2.1.17           # Email format validation
 
   cupertino_icons: ^1.0.2
   http: ^1.6.0
-  cloudinary_public: ^0.23.1
-  tflite_flutter: ^0.12.1
-
-
+  crypto: ^3.0.7
+  http_parser: ^4.0.2
+  path: ^1.9.0
 
 dev_dependencies:
   flutter_test:
@@ -67,12 +64,9 @@ flutter_launcher_icons:
   image_path: "assets/icons/launcherIcon.png"
   min_sdk_android: 21
 
-
-
 flutter:
   uses-material-design: true
   assets:
     - assets/images/
     - assets/icons/
     - assets/ml/
-

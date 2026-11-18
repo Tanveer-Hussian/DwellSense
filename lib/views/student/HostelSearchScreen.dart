@@ -1,12 +1,12 @@
+import 'package:fyp/views/shared Widgets/ResponsiveHostelGrid.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // FR-4.2: Search hostels by name, city, address, or description.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
 import 'package:fyp/controllers/HostelController.dart';
-import 'package:fyp/routes/AppRoutes.dart';
 import 'package:fyp/utils/AppColors.dart';
-import 'package:fyp/views/shared%20Widgets/HostelCard.dart';
+import 'package:fyp/views/shared%20Widgets/HostelCardSkeleton.dart';
 import 'package:get/get.dart';
 
 class HostelSearchScreen extends StatefulWidget {
@@ -81,6 +81,10 @@ class _HostelSearchScreenState extends State<HostelSearchScreen> {
         final results = hostelCtrl.searchResults;
         final query = hostelCtrl.searchQuery.value.trim();
 
+        if (hostelCtrl.isLoading.value) {
+          return const HostelListSkeleton();
+        }
+
         if (query.isEmpty) {
           return Center(
             child: Column(
@@ -143,24 +147,13 @@ class _HostelSearchScreenState extends State<HostelSearchScreen> {
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: results.length,
-          itemBuilder: (ctx, i) {
-            final hostel = results[i];
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: HostelCard(
-                hostel: hostel,
-                onTap: () {
-                  Get.toNamed(
-                    AppRoutes.hostelDetail,
-                    arguments: hostel,
-                  );
-                },
-              ),
-            );
-          },
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1140),
+            child: ResponsiveHostelGrid(
+              hostels: results,
+            ),
+          ),
         );
       }),
     );

@@ -1,47 +1,50 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict
-import tensorflow as tf
-from tensorflow.keras.preprocessing.sequence import pad_sequences
+from typing import List, Dict, Optional
 import json
 import os
+import re
+import numpy as np
+import scipy.sparse as sp
+import joblib
 import uvicorn
 
-app = FastAPI(title="NestIQ ML API", description="API for Fake Review Detection and Smart Hostel Recommendations")
+app = FastAPI(title="DwellSense ML API", description="API for Fake Review Detection (TF-IDF + Behavioral Logistic Regression) and Smart Hostel Recommendations")
 
 # ── Review Model Assets ───────────────────────────────────────────────────────
-review_model = None
-tokenizer_word_index = {}
-vocab_size = 1000
-max_length = 20
+fake_review_bundle = None
+
+POSITIVE_WORDS = {
+    'good', 'great', 'excellent', 'amazing', 'love', 'nice', 'best', 'clean', 
+    'helpful', 'quiet', 'friendly', 'comfortable', 'recommend', 'spacious', 
+    'perfect', 'peaceful', 'wonderful', 'safe', 'delicious', 'value', 'superb', 
+    'pleasant', 'tidy', 'courteous', 'spacious', 'polite', 'cozy'
+}
+
+NEGATIVE_WORDS = {
+    'bad', 'worst', 'terrible', 'horrible', 'dirty', 'noisy', 'poor', 'slow', 
+    'rude', 'broken', 'smell', 'bugs', 'disaster', 'scam', 'uncomfortable', 
+    'cramped', 'hated', 'hate', 'awful', 'overpriced', 'disgusting', 'filthy', 
+    'unacceptable', 'stinky', 'cockroach', 'cockroaches', 'freezing'
+}
 
 # ── Recommendation Model Assets ───────────────────────────────────────────────
 recommendation_data = None
 
 @app.on_event("startup")
 def load_assets():
-    global review_model, tokenizer_word_index, recommendation_data
+    global fake_review_bundle, recommendation_data
     base_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # 1. Fake Review Model
-    for p in [os.path.join(base_dir, 'fake_review_model.h5'), 'fake_review_model.h5']:
+    # 1. Fake Review Model (TF-IDF + Logistic Regression Bundle)
+    for p in [os.path.join(base_dir, 'fake_review_model.joblib'), 'fake_review_model.joblib', 'ml_model/fake_review_model.joblib']:
         if os.path.exists(p):
             try:
-                review_model = tf.keras.models.load_model(p)
-                print(f"Loaded {p}")
+                fake_review_bundle = joblib.load(p)
+                print(f"Loaded fake review model bundle from {p}")
                 break
             except Exception as e:
-                print(f"Error loading review model: {e}")
-
-    for p in [os.path.join(base_dir, 'tokenizer.json'), 'tokenizer.json']:
-        if os.path.exists(p):
-            try:
-                with open(p, 'r') as f:
-                    tokenizer_word_index = json.load(f)
-                print(f"Loaded {p}")
-                break
-            except Exception as e:
-                print(f"Error loading tokenizer: {e}")
+                print(f"Error loading {p}: {e}")
 
     # 2. Recommendation XGBoost Model
     rec_paths = [
@@ -63,20 +66,47 @@ def load_assets():
 load_assets()
 
 # ── Fake Review Helpers ───────────────────────────────────────────────────────
-def text_to_sequence(text, word_index, max_len):
-    words = text.lower().split()
-    seq = []
-    for w in words:
-        if w in word_index and word_index[w] < vocab_size:
-            seq.append(word_index[w])
-        else:
-            seq.append(word_index.get("<OOV>", 1))
-    
-    if len(seq) < max_len:
-        seq = seq + [0] * (max_len - len(seq))
-    else:
-        seq = seq[:max_len]
-    return [seq]
+def extract_single_behavioral_features(text: str, rating: float):
+    text_str = text.strip()
+    words = re.findall(r'\b\w+\b', text_str.lower())
+    num_words = len(words)
+    char_len = len(text_str)
+
+    p_count = sum(1 for w in words if w in POSITIVE_WORDS)
+    n_count = sum(1 for w in words if w in NEGATIVE_WORDS)
+    tot = p_count + n_count
+    sentiment = (p_count - n_count) / tot if tot > 0 else 0.0
+
+    norm_rating = (float(rating) - 3.0) / 2.0
+    discrepancy = abs(norm_rating - sentiment)
+    caps_ratio = sum(1 for c in text_str if c.isupper()) / max(1, char_len)
+    punct_density = (text_str.count('!') + text_str.count('?')) / max(1, num_words)
+    has_elongation = 1.0 if re.search(r'(.)\1{2,}', text_str.lower()) else 0.0
+
+    features = np.array([[
+        float(rating),
+        sentiment,
+        discrepancy,
+        float(num_words),
+        float(char_len),
+        caps_ratio,
+        punct_density,
+        has_elongation
+    ]])
+
+    reasons = []
+    if discrepancy > 1.2:
+        reasons.append(f"Rating-Sentiment contradiction: {rating} stars given but text polarity is opposite.")
+    if num_words < 5 and (rating >= 4.5 or rating <= 1.5):
+        reasons.append("Extreme rating with lack of descriptive details (under 5 words).")
+    if has_elongation > 0:
+        reasons.append("Character repetition spam detected (e.g., repeated letters).")
+    if caps_ratio > 0.4 and char_len > 15:
+        reasons.append("Excessive uppercase lettering / shouting detected.")
+    if punct_density > 0.4:
+        reasons.append("Excessive punctuation spam (!, ?) detected.")
+
+    return features, reasons
 
 class ReviewRequest(BaseModel):
     comment: str
@@ -88,18 +118,39 @@ async def predict_review(request: ReviewRequest):
         raise HTTPException(status_code=400, detail="comment required")
         
     comment = request.comment
+    rating = float(request.rating) if request.rating is not None else 3.0
     
-    if review_model is None:
-        is_suspicious = len(comment.strip()) < 10
-        return {'is_suspicious': is_suspicious, 'score': 1.0 if is_suspicious else 0.0}
+    if fake_review_bundle is None:
+        # Fallback heuristic
+        is_suspicious = len(comment.strip()) < 10 and (rating >= 4.5 or rating <= 1.5)
+        return {
+            'is_suspicious': is_suspicious,
+            'score': 1.0 if is_suspicious else 0.0,
+            'reasons': ["Fallback rule triggered: very brief comment with extreme rating."] if is_suspicious else []
+        }
 
-    padded = text_to_sequence(comment, tokenizer_word_index, max_length)
-    prediction = review_model.predict(padded)[0][0]
-    is_fake = bool(prediction > 0.5)
+    vectorizer = fake_review_bundle['vectorizer']
+    scaler = fake_review_bundle['scaler']
+    classifier = fake_review_bundle['classifier']
+
+    feat_arr, heuristic_reasons = extract_single_behavioral_features(comment, rating)
+    feat_scaled = scaler.transform(feat_arr)
+
+    text_tfidf = vectorizer.transform([comment])
+    X_input = sp.hstack([text_tfidf, feat_scaled], format='csr')
+
+    prob_fake = float(classifier.predict_proba(X_input)[0][1])
     
+    # Flag if statistical classifier >= 0.5 OR behavioral heuristics triggered with elevated probability
+    is_fake = bool(prob_fake >= 0.5 or (len(heuristic_reasons) > 0 and prob_fake >= 0.30))
+
+    if is_fake and not heuristic_reasons:
+        heuristic_reasons.append("Linguistic patterns align with deceptive review benchmark markers.")
+
     return {
         'is_suspicious': is_fake,
-        'score': float(prediction)
+        'score': round(max(prob_fake, 0.75 if (len(heuristic_reasons) > 0 and is_fake) else prob_fake), 4),
+        'reasons': heuristic_reasons
     }
 
 # ── Recommendation Model Helpers & Endpoints ─────────────────────────────────

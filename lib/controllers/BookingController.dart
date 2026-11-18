@@ -9,7 +9,6 @@ import 'package:fyp/models/BookingModel.dart';
 import 'package:fyp/models/HostelModel.dart';
 import 'package:fyp/services/BookingService.dart';
 import 'package:fyp/services/NotificationService.dart';
-import 'package:fyp/services/hostelService.dart';
 import 'package:fyp/utils/AppConstants.dart';
 import 'package:get/get.dart';
 
@@ -17,13 +16,13 @@ import 'package:get/get.dart';
 class BookingController extends GetxController {
   
   final BookingService _bookingService = Get.find<BookingService>();
-  final HostelService _hostelService = Get.find<HostelService>();
   final NotificationService _notificationService =Get.find<NotificationService>();
   final AuthController _authController = Get.find<AuthController>();
 
   // ── Observable state ──────────────────────────────────────────────────────
   final RxList<BookingModel> myBookings = <BookingModel>[].obs;
   final RxBool isLoading = false.obs;
+  final RxBool isBookingsLoaded = false.obs;
 
   StreamSubscription<List<BookingModel>>? _bookingsSub;
 
@@ -41,16 +40,26 @@ class BookingController extends GetxController {
     _bookingsSub?.cancel();
     if (user == null) {
       myBookings.clear();
+      isBookingsLoaded.value = true;
       return;
     }
+    isBookingsLoaded.value = false;
     if (_authController.isStudent) {
       _bookingsSub = _bookingService
           .getStudentBookingsStream(user.uid)
-          .listen((bookings) => myBookings.value = bookings);
+          .listen((bookings) {
+        myBookings.value = bookings;
+        isBookingsLoaded.value = true;
+      });
     } else if (_authController.isOwner) {
       _bookingsSub = _bookingService
           .getOwnerBookingsStream(user.uid)
-          .listen((bookings) => myBookings.value = bookings);
+          .listen((bookings) {
+        myBookings.value = bookings;
+        isBookingsLoaded.value = true;
+      });
+    } else {
+      isBookingsLoaded.value = true;
     }
   }
 
@@ -67,6 +76,8 @@ class BookingController extends GetxController {
     required HostelModel hostel,
     required DateTime checkInDate,
     required DateTime checkOutDate,
+    String? roomId,
+    String? roomNumber,
   }) async {
     try {
       isLoading.value = true;
@@ -100,6 +111,8 @@ class BookingController extends GetxController {
         hostelId: hostel.id,
         hostelName: hostel.name,
         ownerId: hostel.ownerId,
+        roomId: roomId,
+        roomNumber: roomNumber,
         checkInDate: checkInDate,
         checkOutDate: checkOutDate,
         totalAmount: totalAmount,
@@ -110,10 +123,13 @@ class BookingController extends GetxController {
       await _bookingService.createBooking(booking);
 
       // FR-9.2: Notify the hostel owner about new booking request
+      final roomMsg = (roomNumber != null && roomNumber.isNotEmpty)
+          ? ' for $roomNumber'
+          : '';
       await _notificationService.sendNotification(
         userId: hostel.ownerId,
         title: 'New Booking Request',
-        body: '${student.name} requested to book ${hostel.name}.',
+        body: '${student.name} requested to book ${hostel.name}$roomMsg.',
         type: 'booking',
       );
 
@@ -141,6 +157,9 @@ class BookingController extends GetxController {
     BookingModel booking,
     String status, {
     String? note,
+    String? assignedRoomId,
+    String? assignedRoomNumber,
+    String? assignedBedNumber,
   }) async {
     try {
       isLoading.value = true;
@@ -151,12 +170,15 @@ class BookingController extends GetxController {
         booking.hostelId,
         status,
         ownerNote: note,
+        assignedRoomId: assignedRoomId,
+        assignedRoomNumber: assignedRoomNumber,
+        assignedBedNumber: assignedBedNumber,
       );
 
       // FR-9.1: Notify the student of the decision
       final statusMsg = status == AppConstants.bookingConfirmed
-          ? 'confirmed ✅'
-          : 'rejected ❌';
+          ? 'confirmed'
+          : 'rejected';
       await _notificationService.sendNotification(
         userId: booking.studentId,
         title: 'Booking $statusMsg',

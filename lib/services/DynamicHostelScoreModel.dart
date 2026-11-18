@@ -1,36 +1,71 @@
 import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fyp/services/HostelScoreModel.dart'; // Fallback
 
 class DynamicHostelScoreModel {
+  double _baseScore = 53.13; // Regression intercept baseline
   List<dynamic>? _trees;
   bool _isLoaded = false;
   
   // Singleton instance
   static final DynamicHostelScoreModel _instance = DynamicHostelScoreModel._internal();
   factory DynamicHostelScoreModel() => _instance;
-  DynamicHostelScoreModel._internal();
+  DynamicHostelScoreModel._internal() {
+    initLocalModel();
+  }
+
+  void _parseModel(String jsonStr) {
+    try {
+      final decoded = json.decode(jsonStr);
+      if (decoded is Map<String, dynamic>) {
+        _baseScore = (decoded['base_score'] as num?)?.toDouble() ?? 53.13;
+        _trees = decoded['trees'] as List<dynamic>?;
+        _isLoaded = _trees != null && _trees!.isNotEmpty;
+      } else if (decoded is List<dynamic>) {
+        // Fallback if raw list of trees
+        _baseScore = 53.13;
+        _trees = decoded;
+        _isLoaded = _trees!.isNotEmpty;
+      }
+    } catch (e) {
+      print("Failed to parse XGBoost model: $e");
+    }
+  }
+
+  Future<void> initLocalModel() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      String? cachedModel = prefs.getString('xgboost_model_json');
+      
+      // If cached model is old (lacks base_score), purge it to use the new 7-feature model
+      if (cachedModel != null && cachedModel.contains('"base_score"')) {
+        _parseModel(cachedModel);
+      } else {
+        if (cachedModel != null) {
+          await prefs.remove('xgboost_model_json');
+        }
+        final localJson = await rootBundle.loadString('assets/ml/xgboost_model.json');
+        _parseModel(localJson);
+      }
+    } catch (e) {
+      print("Failed to initialize local XGBoost model: $e");
+    }
+  }
 
   Future<void> fetchLatestWeights() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      String? cachedModel = prefs.getString('xgboost_model_json');
-      if (cachedModel != null) {
-        _trees = json.decode(cachedModel);
-        _isLoaded = true;
-      }
-      
       final response = await http.get(Uri.parse(
-          'https://raw.githubusercontent.com/Tanveer-Hussian/NestIQ/main/assets/ml/xgboost_model.json'));
+          'https://raw.githubusercontent.com/Tanveer-Hussian/DwellSense/main/assets/ml/xgboost_model.json'));
 
       if (response.statusCode == 200) {
-        _trees = json.decode(response.body);
-        _isLoaded = true;
+        _parseModel(response.body);
         prefs.setString('xgboost_model_json', response.body);
       }
     } catch (e) {
-      print("Failed to fetch dynamic weights: \$e");
+      print("Failed to fetch dynamic weights: $e");
     }
   }
 
@@ -41,11 +76,12 @@ class DynamicHostelScoreModel {
       return predictHostelScore(input);
     }
     
-    double sum = 0.5; // Base score is usually 0.5 in XGBoost binary classification, but for regression it depends.
+    // In XGBoost regression: prediction = base_score + sum(tree_leaves)
+    double sum = _baseScore;
     for (var tree in _trees!) {
       sum += _evaluateTree(tree, input);
     }
-    return sum;
+    return sum.clamp(0.0, 100.0);
   }
 
   double _evaluateTree(dynamic node, List<double> input) {
@@ -58,7 +94,7 @@ class DynamicHostelScoreModel {
     double splitCondition = (node['split_condition'] as num).toDouble();
     
     int nextNodeId;
-    if (input[featureIndex] < splitCondition) {
+    if (featureIndex < input.length && input[featureIndex] < splitCondition) {
       nextNodeId = node['yes'];
     } else {
       nextNodeId = node['no'];
